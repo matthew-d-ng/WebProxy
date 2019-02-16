@@ -44,7 +44,5 @@ int main()
 
     }
 
-    proxy_service.join();
-
     return 0;
 }
