@@ -14,7 +14,7 @@
 using namespace std;
 
 const int PORT = 8888;
-const int BUF_SIZE = 1024;
+size_t BUF_SIZE = 1024;
 unordered_set<string> blacklist;
 
 bool check_item_blocked(string url)
@@ -60,7 +60,7 @@ void req_handler(int sock)
 	if ( (read_size = recv(sock, client_req, BUF_SIZE, 0)) > 0 )
 	{
 		// placeholder, delete following line when html is actually retrieving
-		write( sock, client_req, strlen(client_req) );
+		// write( sock, client_req, strlen(client_req) );
 
         cout << "REQUEST RECEIVED:\n" << client_req;
 
