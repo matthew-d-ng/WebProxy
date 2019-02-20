@@ -13,15 +13,19 @@
 using namespace std;
 
 const int PORT = 80;
+const char* PORT_STR = "80";
 const int BUF_SIZE = 1024;
 // some sort of cache
 
 void hostname_from_req(char* request, char* name_buf)
 {
     string str(request);
+
     int i = str.find("Host:");
     int j = str.find("\n", i);
-    string name = str.substr(i+6, j-(i+6));
+    int length = j - (i + 6);
+    string name = str.substr(i+6, length);
+
     strcpy(name_buf, name.c_str());
     cout << name_buf;
 
@@ -34,6 +38,12 @@ int make_http_request(char* response_buf, size_t buf_size, char* request)
 	struct sockaddr_in server;
     char* hostname = new char[1024];
 	char* server_address;
+    struct addrinfo hints = {};
+    struct addrinfo *addrs;
+
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
 
 	sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (sock == -1)
@@ -44,23 +54,17 @@ int make_http_request(char* response_buf, size_t buf_size, char* request)
 	cout << "Socket created with host\n";
 	
     hostname_from_req( request, hostname );
-    cout << "host: " << hostname;
-    struct hostent *target = gethostbyname( hostname );
-    delete[] hostname;
+    cout << "host: " << hostname << endl;
 
-    // this doesn't even print correctly B)))
-    if ( !target ) {
-        cout << "AAAAAGHGHHHHH" << endl;
+    if (getaddrinfo("www.google.com", PORT_STR, &hints, &addrs) != 0)
+    {
+        cout << "AAAAAAGGGGGGGGHHHHHHHHHH" << endl;
         return -1;
     }
-    
-
-	server.sin_addr.s_addr = inet_addr( target->h_addr_list[0] );
-	server.sin_family = AF_INET;
-	server.sin_port = htons(PORT);
+    delete[] hostname;
 
 	// Connecting to host
-	if ( connect( sock, (struct sockaddr *)&server, sizeof(server) ) < 0 )
+	if ( connect( sock, addrs->ai_addr, sizeof(server) ) < 0 )
 	{
 		cerr << "Connect to host failed. Error" << endl;
 		return -1;
@@ -74,17 +78,15 @@ int make_http_request(char* response_buf, size_t buf_size, char* request)
         cerr << "Send failed" << endl;
         return -1;
     }
-    
-    // start timeout
 
     // try {
-    // Receive a reply from the server
-    if ( recv(sock, response_buf, buf_size , 0) < 0 )
-    {
-        cerr << "recv failed" << endl;
-        return -1;
-    }
+    // start timeout
 
+    // Receive a reply from the server
+    if ( recv(sock, response_buf, buf_size, 0) );
+    {
+        
+    }
     // stop timer
     // } except (timer exception) { return -1; }
 
