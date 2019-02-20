@@ -2,6 +2,7 @@
     "files.associations": {
         "thread": "cpp",
         "cstdio": "cpp",
-        "iostream": "cpp"
+        "iostream": "cpp",
+        "*.tcc": "cpp"
     }
 }

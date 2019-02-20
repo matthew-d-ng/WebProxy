@@ -14,8 +14,18 @@
 using namespace std;
 
 const int PORT = 8888;
-size_t BUF_SIZE = 2048;
+size_t BUF_SIZE = 1024;
 unordered_set<string> blacklist;
+
+string hostname_from_req(string req)
+{
+    int i = req.find("Host:");
+    int j = req.find("\n", i);
+    int length = j - (i + 6) - 1;
+    string name = req.substr(i+6, length);
+
+    return name;
+}
 
 bool check_item_blocked(string url)
 {
@@ -53,38 +63,40 @@ void print_blacklist()
 
 void req_handler(int sock)
 {
-	int read_size;
-	char *client_req = new char[BUF_SIZE];
+	char *client_buf = new char[BUF_SIZE];
+    string request;
 
 	// Receive a message from client
-	if ( (read_size = recv(sock, client_req, BUF_SIZE, 0)) > 0 )
-	{
-		// placeholder, delete following line when html is actually retrieving
-		// write( sock, client_req, strlen(client_req) );
+    int read_size = recv(sock, client_buf, BUF_SIZE, 0);
+    while ( read_size > 0 )
+    {
+        request.append(client_buf, read_size);
+        read_size = recv(sock, client_buf, BUF_SIZE, 0);
+    }
 
-        cout << "REQUEST RECEIVED:\n" << client_req;
+    // placeholder, delete following line when html is actually retrieving
 
-        //IF NOT BLOCKED get webpage ELSE return error
-        char *http_response = new char[BUF_SIZE];
+    cout << "REQUEST RECEIVED:\n" << request;
+    string host_str = hostname_from_req(request);
+    const char* hostname = host_str.c_str();
 
-        // grab url and check against blacklist
-        if ( !check_item_blocked(client_req) )
+    //IF NOT BLOCKED get webpage ELSE return error
+
+    // grab url and check against blacklist
+    if ( !check_item_blocked(host_str) )
+    {
+        if ( get_html( &request[0], hostname, sock ) != 0 )
         {
-            if ( get_html( http_response, BUF_SIZE, client_req, sock ) != 0 )
-            {
-                // write error page into response
-            }
+            // write error page into response
         }
-        else
-        {
-            // write block page into http_response 
-        }
-        
-        delete[] http_response;
-        close(sock);
-	}
-	
-    delete[] client_req;
+    }
+    else
+    {
+        // write block page into http_response 
+    }
+
+    delete[] client_buf;
+    close(sock);
 
 	if (read_size == 0)
 	{
@@ -122,9 +134,7 @@ void req_listener()
 	}
 	cout << "bind done\n";
 
-
 	listen(socket_desc, 10);
-
 
 	cout << "Waiting for incoming connections...\n";
 	c = sizeof(struct sockaddr_in);
@@ -145,7 +155,7 @@ void req_listener()
         else
             cout << "AAAAAAAGGGHHHHHH" << endl;
     }
-    
+
     if (client_sock < 0)
     {
         cerr << "accept failed\n";

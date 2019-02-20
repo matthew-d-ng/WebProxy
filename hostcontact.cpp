@@ -9,34 +9,19 @@
 #include <arpa/inet.h>	//inet_addr
 #include <unistd.h>	//write
 #include <netdb.h>
+#include <vector>
 
 using namespace std;
 
 const int PORT = 80;
 const char* PORT_STR = "80";
-const int BUF_SIZE = 2048;
+const int BUF_SIZE = 1024;
 // some sort of cache
 
-void hostname_from_req(char* request, char* name_buf)
-{
-    string str(request);
-
-    int i = str.find("Host:");
-    int j = str.find("\n", i);
-    int length = j - (i + 6);
-    string name = str.substr(i+6, length);
-
-    strcpy(name_buf, name.c_str());
-    cout << name_buf;
-
-    // TODO: fix cursed code
-}
-
-int make_http_request(char* response_buf, size_t buf_size, char* request, int client_sock)
+int make_http_request(char* request, const char* hostname, int client_sock)
 {
     int sock;
 	struct sockaddr_in server;
-    char* hostname = new char[1024];
 	char* server_address;
     struct addrinfo hints = {};
     struct addrinfo *addrs;
@@ -53,18 +38,14 @@ int make_http_request(char* response_buf, size_t buf_size, char* request, int cl
 	}
 	cout << "Socket created with host\n";
 	
-    hostname_from_req( request, hostname );
-    cout << "host: " << hostname << endl;
-
-    if (getaddrinfo("www.google.com", PORT_STR, &hints, &addrs) != 0)
+    if (getaddrinfo(hostname, PORT_STR, &hints, &addrs) != 0)
     {
         cout << "AAAAAAGGGGGGGGHHHHHHHHHH" << endl;
         return -1;
     }
-    delete[] hostname;
 
 	// Connecting to host
-	if ( connect( sock, addrs->ai_addr, sizeof(server) ) < 0 )
+	if ( connect( sock, addrs->ai_addr, sizeof(*addrs) ) < 0 )
 	{
 		cerr << "Connect to host failed. Error" << endl;
 		return -1;
@@ -79,34 +60,37 @@ int make_http_request(char* response_buf, size_t buf_size, char* request, int cl
         return -1;
     }
 
-    // try {
-    // start timeout
+    char *response_buf = new char[BUF_SIZE];
 
     // Receive a reply from the server
-    int bytes = recv( sock, response_buf, buf_size, 0 );
+    int bytes = recv( sock, response_buf, BUF_SIZE, 0 );
     while ( bytes > 0 )
     {
         send( client_sock, response_buf, bytes, 0 );
-        bytes = recv( sock, response_buf, buf_size, 0 );
+        bytes = recv( sock, response_buf, BUF_SIZE, 0 );
     }
-    // stop timer
-    // } except (timer exception) { return -1; }
 
+    delete[] response_buf;
 	close(sock);
     return 0;
 }
 
-int get_html(char* return_buf, size_t buf_size, char* request, int client_sock)
+int get_html(char* request, const char* hostname, int client_sock)
 {
     // IF in cache
     // THEN return cached stuff
     // ELSE get it from the real host
-    
+    cout << "Host: " << hostname << endl;
     // NO CACHE:
-    if ( make_http_request(return_buf, buf_size, request, client_sock) != 0 )
+    if ( make_http_request(request, hostname, client_sock) != 0 )
     {
         return -1;
     }
 
     return 0;
+}
+
+int constant_connection(const char* hostname, int client_sock)
+{
+    
 }
