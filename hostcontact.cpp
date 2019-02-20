@@ -14,7 +14,7 @@ using namespace std;
 
 const int PORT = 80;
 const char* PORT_STR = "80";
-const int BUF_SIZE = 1024;
+const int BUF_SIZE = 2048;
 // some sort of cache
 
 void hostname_from_req(char* request, char* name_buf)
@@ -32,7 +32,7 @@ void hostname_from_req(char* request, char* name_buf)
     // TODO: fix cursed code
 }
 
-int make_http_request(char* response_buf, size_t buf_size, char* request)
+int make_http_request(char* response_buf, size_t buf_size, char* request, int client_sock)
 {
     int sock;
 	struct sockaddr_in server;
@@ -83,26 +83,27 @@ int make_http_request(char* response_buf, size_t buf_size, char* request)
     // start timeout
 
     // Receive a reply from the server
-    if ( recv(sock, response_buf, buf_size, 0) );
+    int bytes = recv( sock, response_buf, buf_size, 0 );
+    while ( bytes > 0 )
     {
-        
+        send( client_sock, response_buf, bytes, 0 );
+        bytes = recv( sock, response_buf, buf_size, 0 );
     }
     // stop timer
     // } except (timer exception) { return -1; }
 
 	close(sock);
     return 0;
-    
 }
 
-int get_html(char* return_buf, size_t buf_size, char* request)
+int get_html(char* return_buf, size_t buf_size, char* request, int client_sock)
 {
     // IF in cache
     // THEN return cached stuff
     // ELSE get it from the real host
     
     // NO CACHE:
-    if ( make_http_request(return_buf, buf_size, request) != 0 )
+    if ( make_http_request(return_buf, buf_size, request, client_sock) != 0 )
     {
         return -1;
     }

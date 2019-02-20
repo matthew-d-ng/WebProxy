@@ -14,7 +14,7 @@
 using namespace std;
 
 const int PORT = 8888;
-size_t BUF_SIZE = 1024;
+size_t BUF_SIZE = 2048;
 unordered_set<string> blacklist;
 
 bool check_item_blocked(string url)
@@ -70,7 +70,7 @@ void req_handler(int sock)
         // grab url and check against blacklist
         if ( !check_item_blocked(client_req) )
         {
-            if ( get_html( http_response, BUF_SIZE, client_req ) != 0 )
+            if ( get_html( http_response, BUF_SIZE, client_req, sock ) != 0 )
             {
                 // write error page into response
             }
@@ -80,7 +80,7 @@ void req_handler(int sock)
             // write block page into http_response 
         }
         
-        write( sock, http_response, strlen(http_response) );
+        delete[] http_response;
         close(sock);
 	}
 	
@@ -129,16 +129,21 @@ void req_listener()
 	cout << "Waiting for incoming connections...\n";
 	c = sizeof(struct sockaddr_in);
 
-    client_sock = accept( socket_desc, (struct sockaddr *)&client, (socklen_t*)&c );
-    while (client_sock)
+    while (true)
     {
-        cout << "Connection accepted\n";
-        thread request ( req_handler, client_sock );
-        cout << "Handler assigned\n";
-        request.detach();
-
-        // look for next client
         client_sock = accept( socket_desc, (struct sockaddr *)&client, (socklen_t*)&c );
+        if (client_sock)
+        {
+            cout << "Connection accepted\n";
+            thread request ( req_handler, client_sock );
+            cout << "Handler assigned\n";
+            request.detach();
+
+            // look for next client
+            // client_sock = accept( socket_desc, (struct sockaddr *)&client, (socklen_t*)&c );
+        }
+        else
+            cout << "AAAAAAAGGGHHHHHH" << endl;
     }
     
     if (client_sock < 0)
