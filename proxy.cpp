@@ -14,28 +14,26 @@
 using namespace std;
 
 const int PORT = 8888;
-size_t BUF_SIZE = 1024;
+size_t BUF_SIZE = 2048;
 unordered_set<string> blacklist;
 
 string hostname_from_req(string req, bool tunnel)
 {
     int i, j;
+    
+    i = req.find("Host:");
+    i+=6;
     if (!tunnel)
-    {
-        i = req.find("Host:");
-        j = req.find("\n", i);
-        i+=6;
+    {      
+        j = req.find("\r\n", i);
     }
     else
     {
-        i = req.find(" ");
         j = req.find(":", i);
-        i++;
     }
 
-    int length = j - i - 1;
-    string name = req.substr(i+6, length);
-
+    int length = j - i;
+    string name = req.substr(i, length);
     return name;
 }
 
@@ -46,7 +44,7 @@ string port_from_req(string req)
     i++;
     int j = req.find(" ", i);
 
-    int length = j - i - 1;
+    int length = j - i;
     string port = req.substr(i, length);
     return port;
 }
@@ -106,10 +104,11 @@ void req_handler(int sock)
     bool connect_req = (request.compare(0, 7, "CONNECT") == 0);
 
     string host_str;
+    string port_str;
     const char* port;
     if (connect_req)
     {
-        string port_str = port_from_req(request);
+        port_str = port_from_req(request);
         port = port_str.c_str();
     }
 
@@ -186,14 +185,8 @@ void req_listener()
         {
             cout << "Connection accepted\n";
             thread request ( req_handler, client_sock );
-            cout << "Handler assigned\n";
             request.detach();
-
-            // look for next client
-            // client_sock = accept( socket_desc, (struct sockaddr *)&client, (socklen_t*)&c );
         }
-        else
-            cout << "AAAAAAAGGGHHHHHH" << endl;
     }
 
     if (client_sock < 0)

@@ -3,6 +3,7 @@
         "thread": "cpp",
         "cstdio": "cpp",
         "iostream": "cpp",
-        "*.tcc": "cpp"
+        "*.tcc": "cpp",
+        "ostream": "cpp"
     }
 }
