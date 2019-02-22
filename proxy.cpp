@@ -17,14 +17,38 @@ const int PORT = 8888;
 size_t BUF_SIZE = 1024;
 unordered_set<string> blacklist;
 
-string hostname_from_req(string req)
+string hostname_from_req(string req, bool tunnel)
 {
-    int i = req.find("Host:");
-    int j = req.find("\n", i);
-    int length = j - (i + 6) - 1;
+    int i, j;
+    if (!tunnel)
+    {
+        i = req.find("Host:");
+        j = req.find("\n", i);
+        i+=6;
+    }
+    else
+    {
+        i = req.find(" ");
+        j = req.find(":", i);
+        i++;
+    }
+
+    int length = j - i - 1;
     string name = req.substr(i+6, length);
 
     return name;
+}
+
+string port_from_req(string req)
+{
+    int i = req.find(" ");
+    i = req.find(":", i);
+    i++;
+    int j = req.find(" ", i);
+
+    int length = j - i - 1;
+    string port = req.substr(i, length);
+    return port;
 }
 
 bool check_item_blocked(string url)
@@ -68,24 +92,40 @@ void req_handler(int sock)
 
 	// Receive a message from client
     int read_size = recv(sock, client_buf, BUF_SIZE, 0);
+    // remove this if fixed loop
+    request.append(client_buf, read_size);
+    /*
     while ( read_size > 0 )
     {
         request.append(client_buf, read_size);
         read_size = recv(sock, client_buf, BUF_SIZE, 0);
     }
-
-    // placeholder, delete following line when html is actually retrieving
-
+    */
     cout << "REQUEST RECEIVED:\n" << request;
-    string host_str = hostname_from_req(request);
-    const char* hostname = host_str.c_str();
 
+    bool connect_req = (request.compare(0, 7, "CONNECT") == 0);
+
+    string host_str;
+    const char* port;
+    if (connect_req)
+    {
+        string port_str = port_from_req(request);
+        port = port_str.c_str();
+    }
+
+    host_str = hostname_from_req(request, connect_req);
+    const char* hostname = host_str.c_str();
+    const char* req = request.c_str();
     //IF NOT BLOCKED get webpage ELSE return error
 
     // grab url and check against blacklist
     if ( !check_item_blocked(host_str) )
     {
-        if ( get_html( &request[0], hostname, sock ) != 0 )
+        if ( connect_req )
+        {
+            http_tunnel(hostname, sock, port);
+        }
+        else if ( get_html( req, hostname, sock ) != 0 )
         {
             // write error page into response
         }
