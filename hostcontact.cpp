@@ -7,10 +7,10 @@
 #include <sys/types.h>
 #include <iostream>
 #include <string.h>
-#include <arpa/inet.h>	//inet_addr
-#include <unistd.h>	//write
+#include <arpa/inet.h>
+#include <unistd.h>
 #include <netdb.h>
-#include <vector>
+#include "proxy.h"
 
 using namespace std;
 
@@ -20,11 +20,27 @@ const char* HTTP_PORT = "80";
 const int BUF_SIZE = 2048;
 // some sort of cache
 
-int make_http_request(const char* request, const char* hostname, int client_sock)
+/*
+*   For sending a large amount of data, that could potentially overload our buffer
+*/
+void send_large_data(int socket, const char* data)
+{
+    int data_len = strlen(data);
+    int current = 0;
+    while ( current < data_len )
+    {
+        int bytes_left = data_len - current;
+        int chunk_size = bytes_left > BUF_SIZE ? BUF_SIZE : bytes_left;
+        send(socket, &data[current], chunk_size, 0);
+        current+=chunk_size;
+    }
+}
+
+int connect_to_server(const char* hostname, const char* port) 
 {
     int sock;
-	struct sockaddr_in server;
 	char* server_address;
+
     struct addrinfo hints = {};
     struct addrinfo *addrs;
 
@@ -35,13 +51,15 @@ int make_http_request(const char* request, const char* hostname, int client_sock
 	sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (sock == -1)
 	{
-		cout << "Could not create socket with host" << endl;
+		cerr << "Could not create socket with host" << endl;
         return -1;
 	}
 
-    if (getaddrinfo(hostname, HTTP_PORT, &hints, &addrs) != 0)
+    // Getting IP address
+    int addr_ret =  getaddrinfo(hostname, port, &hints, &addrs);
+    if (addr_ret != 0 )
     {
-        cout << "Hostname seems invalid!" << endl;
+        cerr << "Hostname or port seems invalid! Error: " << addr_ret << endl;
         return -1;
     }
 
@@ -51,28 +69,89 @@ int make_http_request(const char* request, const char* hostname, int client_sock
 		cerr << "Connect to host failed. Error" << endl;
 		return -1;
 	}
-	
-	cout << "Connected to host :" << hostname << "\n";
 
-    // send request
-    if ( send(sock, request, strlen(request), 0) < 0 )
+	cout << "Connected to host: " << hostname << ":" << port << "\n";
+    return sock;
+}
+
+int make_http_request(const char* request, const char* hostname, int client_sock)
+{
+    int sock = connect_to_server(hostname, HTTP_PORT);
+
+    if (sock == -1)
     {
-        cerr << "Send failed" << endl;
         return -1;
     }
 
-    char *response_buf = new char[BUF_SIZE];
+    send_large_data(sock, request);
 
-    // Receive a reply from the server
+    char *response_buf = new char[BUF_SIZE];
+    string response = "";
+
     int bytes = recv( sock, response_buf, BUF_SIZE, 0 );
+    //response.append(response_buf, bytes);
     while ( bytes > 0 )
     {
         send( client_sock, response_buf, bytes, 0 );
+        //cout << "\n\nBYTES: " << bytes << "\n";
+        //cout << response_buf;
         bytes = recv( sock, response_buf, BUF_SIZE, 0 );
+        if (bytes == -1)
+            cerr << "Something has broken badly oh god oh fuck";
+        //response.append(response_buf, bytes);
     }
+    if (bytes == 0)
+        cout << "Graceful exit!\n";
+    // send_large_data(client_sock, response.c_str());
 
     delete[] response_buf;
+    cout << "Goodbye " << hostname << endl;
 	close(sock);
+    return 0;
+}
+
+int http_tunnel(const char* hostname, int client_sock, const char* port)
+{
+    int server_sock = connect_to_server(hostname, port);
+
+    if (server_sock == -1)
+    {
+        return -1;
+    }
+
+    send( client_sock, HTTP_OK, strlen(HTTP_OK), 0 );
+
+    // send stuff back & forth
+    char *response_buf = new char[BUF_SIZE];
+    fd_set read;
+    int maxsock = max(client_sock, server_sock);
+
+    int c_bytes;
+    int s_bytes;
+    do
+    {
+        FD_ZERO(&read);
+        FD_SET(client_sock, &read);
+        FD_SET(server_sock, &read);
+
+        if ( select(maxsock+1, &read, NULL, NULL, NULL) > 0 )
+        {
+            if ( FD_ISSET(client_sock, &read) )
+            {
+                c_bytes = recv( client_sock, response_buf, BUF_SIZE, 0 );
+                send( server_sock, response_buf, c_bytes, 0 );
+            }
+            if ( FD_ISSET(server_sock, &read) )
+            {
+                s_bytes = recv( server_sock, response_buf, BUF_SIZE, 0 );
+                send( client_sock, response_buf, s_bytes, 0 );
+            }
+        }
+    } while (c_bytes > 0 && s_bytes > 0);
+
+    delete[] response_buf;
+    cout << "Goodbye " << hostname << ":" << port << endl;
+    close(server_sock);
     return 0;
 }
 
@@ -89,73 +168,4 @@ int get_html(const char* request, const char* hostname, int client_sock)
     }
 
     return 0;
-}
-
-int http_tunnel(const char* hostname, int client_sock, const char* port)
-{
-    int server_sock;
-	struct sockaddr_in server;
-	char* server_address;
-    struct addrinfo hints = {};
-    struct addrinfo *addrs;
-
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
-
-    int addr_ret = getaddrinfo(hostname, port, &hints, &addrs);
-    if ( addr_ret != 0 )
-    {
-        cerr << "Hostname and port not working! Error: " << addr_ret  << endl;
-        return -1;
-    }
-
-    server_sock = socket(addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol);
-	if (server_sock == -1)
-	{
-		cout << "Could not create socket with host" << endl;
-        return -1;
-	}
-
-	// Connecting to host
-	if ( connect( server_sock, addrs->ai_addr, sizeof(*addrs) ) < 0 )
-	{
-		cerr << "Connect to host failed. Error" << endl;
-		return -1;
-	}
-
-    cout << "Connected to host: " << hostname << ":" << port << endl;
-
-    send( client_sock, HTTP_OK, strlen(HTTP_OK), 0 );
-
-    // send back & forth stuuff
-    char *response_buf = new char[BUF_SIZE];
-    fd_set read;
-    int maxsock = max(client_sock, server_sock);
-
-    int c_bytes;
-    int s_bytes;
-    do
-    {
-        FD_ZERO(&read);
-        FD_SET(client_sock, &read);
-        FD_SET(server_sock, &read);
-
-        if (select(maxsock+1, &read, NULL, NULL, NULL) > 0)
-        {
-            if ( FD_ISSET(client_sock, &read) )
-            {
-                c_bytes = recv( client_sock, response_buf, BUF_SIZE, 0 );
-                send( server_sock, response_buf, c_bytes, 0 );
-            }
-            if ( FD_ISSET(server_sock, &read) )
-            {
-                s_bytes = recv( server_sock, response_buf, BUF_SIZE, 0 );
-                send( client_sock, response_buf, s_bytes, 0 );
-            }
-        }
-    } while (c_bytes > 0 && s_bytes > 0);
-
-    delete[] response_buf;
-    close(server_sock);
 }

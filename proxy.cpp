@@ -10,17 +10,25 @@
 #include <arpa/inet.h>	//inet_addr
 #include <unistd.h>	//write
 #include "hostcontact.h"
+#include "proxy.h"
 
 using namespace std;
 
 const int PORT = 8888;
+const char* HTTP_HEADER_END = "\r\n\r\n";
+
+const char* BLOCK_PAGE = "<!DOCTYPE html>"
+                                            "<html><head>"
+                                            "<h1>THIS WEBPAGE IS BLOCKED</h1>"
+                                            "</head></html>";
+
 size_t BUF_SIZE = 2048;
 unordered_set<string> blacklist;
 
 string hostname_from_req(string req, bool tunnel)
 {
     int i, j;
-    
+
     i = req.find("Host:");
     i+=6;
     if (!tunnel)
@@ -47,6 +55,17 @@ string port_from_req(string req)
     int length = j - i;
     string port = req.substr(i, length);
     return port;
+}
+
+int contentlen_from_req(string req)
+{
+    int i = req.find("Content-Length: ");
+    if ( i == -1 )
+        return 0;
+
+    i+= 16;
+    int j = req.find("\r\n", i);
+    return stoi( req.substr(i, j-i) );
 }
 
 bool check_item_blocked(string url)
@@ -77,75 +96,66 @@ void print_blacklist()
         cout << "  " << url << "\n";
 }
 
-/*
-*   Yeah, I seemingly inconsistently use string/char*
-*   socket.h is a C library, so the char* is needed to be compatible with that
-*   Replacing the other uses of string with char* doesn't feel right :<
-*/
-
 void req_handler(int sock)
 {
 	char *client_buf = new char[BUF_SIZE];
-    string request;
+    string request = "";
 
-	// Receive a message from client
     int read_size = recv(sock, client_buf, BUF_SIZE, 0);
-    // remove this if fixed loop
     request.append(client_buf, read_size);
-    /*
-    while ( read_size > 0 )
+    int empty_line = request.find(HTTP_HEADER_END);
+
+    while ( empty_line == -1 )
     {
-        request.append(client_buf, read_size);
         read_size = recv(sock, client_buf, BUF_SIZE, 0);
+        request.append(client_buf, read_size);
+        empty_line = request.find(HTTP_HEADER_END);
     }
-    */
+
+    int content_len = contentlen_from_req(request);
+    int received = request.length() - 1 - empty_line + 3;
+
+    while ( received < content_len )
+    {
+        read_size = recv(sock, client_buf, BUF_SIZE, 0);
+        request.append(client_buf, read_size);
+        received += read_size;
+    }
+
     cout << "REQUEST RECEIVED:\n" << request;
 
     bool connect_req = (request.compare(0, 7, "CONNECT") == 0);
 
-    string host_str;
-    string port_str;
-    const char* port;
-    if (connect_req)
-    {
-        port_str = port_from_req(request);
-        port = port_str.c_str();
-    }
+    string hostname;
+    string port;
 
-    host_str = hostname_from_req(request, connect_req);
-    const char* hostname = host_str.c_str();
-    const char* req = request.c_str();
+    if (connect_req)
+        port = port_from_req(request);
+
+    hostname = hostname_from_req(request, connect_req);
+
     //IF NOT BLOCKED get webpage ELSE return error
 
     // grab url and check against blacklist
-    if ( !check_item_blocked(host_str) )
+    if ( !check_item_blocked(hostname) )
     {
         if ( connect_req )
         {
-            http_tunnel(hostname, sock, port);
+            http_tunnel( hostname.c_str(), sock, port.c_str() );
         }
-        else if ( get_html( req, hostname, sock ) != 0 )
+        else if ( get_html( request.c_str(), hostname.c_str(), sock ) != 0 )
         {
             // write error page into response
         }
     }
     else
     {
-        // write block page into http_response 
+        send(sock, BLOCK_PAGE, strlen(BLOCK_PAGE), 0);
     }
 
+    // cout << "bye bye" << endl;
     delete[] client_buf;
     close(sock);
-
-	if (read_size == 0)
-	{
-		cout << "Client disconnected" << endl;
-	}
-	else if (read_size == -1)
-	{
-		cerr << "recv failed\n";
-	}
-    cout << "bye bye" << endl;
 }
 
 void req_listener()
@@ -160,7 +170,6 @@ void req_listener()
 		cerr << "Could not create socket\n";
         return;
 	}
-	cout << "Socket created\n";
 
 	server.sin_family = AF_INET;
 	server.sin_addr.s_addr = INADDR_ANY;
@@ -171,7 +180,6 @@ void req_listener()
 		cerr << "bind failed. Error\n";
 		return;
 	}
-	cout << "bind done\n";
 
 	listen(socket_desc, 10);
 
@@ -188,7 +196,7 @@ void req_listener()
             request.detach();
         }
     }
-
+    cout << "what the fuck";
     if (client_sock < 0)
     {
         cerr << "accept failed\n";
