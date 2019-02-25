@@ -41,7 +41,7 @@ bool valid_cache(string hostname)
 {
     return cache.find(hostname) != cache.end();
 }
-
+/*
 void add_to_cache(string hostname, string response)
 {
     if (cache.find(hostname) == cache.end())
@@ -57,7 +57,7 @@ string get_from_cache(string hostname)
         result = cache.at(hostname);
     return result;
 }
-
+*/
 int connect_to_server(const char *hostname, const char *port)
 {
     int sock;
@@ -127,7 +127,7 @@ int make_http_request(const char *request, const char *hostname, int client_sock
     cout << "Goodbye " << hostname << endl;
     close(sock);
 
-    add_to_cache(hostname, response);
+    //add_to_cache(hostname, response);
 
     return 0;
 }
@@ -179,14 +179,14 @@ int get_html(const char *request, const char *hostname, int client_sock)
     // IF in cache
     // THEN return cached stuff
     // ELSE get it from the real host
-
+    /*
     if (valid_cache(hostname))
     {
         string cache_ret = get_from_cache(hostname);
         const char *data = cache_ret.c_str();
         send_large_data(client_sock, data);
-    }
-    else if (make_http_request(request, hostname, client_sock) != 0)
+    }*/
+    if (make_http_request(request, hostname, client_sock) != 0)
     {
         return -1;
     }
