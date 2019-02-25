@@ -12,6 +12,7 @@
 #include <netdb.h>
 #include <unordered_map>
 #include "proxy.h"
+#include <chrono>
 
 using namespace std;
 
@@ -41,23 +42,23 @@ bool valid_cache(string hostname)
 {
     return cache.find(hostname) != cache.end();
 }
-/*
+
 void add_to_cache(string hostname, string response)
 {
     if (cache.find(hostname) == cache.end())
     {
-        cache.insert(hostname, response);
+        cache.insert({hostname, response});
     }
 }
 
 string get_from_cache(string hostname)
 {
-    string result = nullptr;
+    string result = "";
     if (cache.find(hostname) != cache.end())
         result = cache.at(hostname);
     return result;
 }
-*/
+
 int connect_to_server(const char *hostname, const char *port)
 {
     int sock;
@@ -99,21 +100,22 @@ int connect_to_server(const char *hostname, const char *port)
 int make_http_request(const char *request, const char *hostname, int client_sock)
 {
     int sock = connect_to_server(hostname, HTTP_PORT);
-
     if (sock == -1)
     {
         return -1;
     }
-
+    cout << "Sending: " << strlen(request) << "B\n";
     send_large_data(sock, request);
 
     char *response_buf = new char[BUF_SIZE];
     string response = "";
+    int byteSum = 0;
 
     int bytes = recv(sock, response_buf, BUF_SIZE, 0);
     response.append(response_buf, bytes);
     while (bytes > 0)
-    {
+    {  
+        byteSum += bytes;
         send(client_sock, response_buf, bytes, 0);
         bytes = recv(sock, response_buf, BUF_SIZE, 0);
 
@@ -122,12 +124,12 @@ int make_http_request(const char *request, const char *hostname, int client_sock
         else
             response.append(response_buf, bytes);
     }
-
+    cout << "Received: " << byteSum << "B\n";
     delete[] response_buf;
     cout << "Goodbye " << hostname << endl;
     close(sock);
 
-    //add_to_cache(hostname, response);
+    // add_to_cache(hostname, response);
 
     return 0;
 }
@@ -179,17 +181,33 @@ int get_html(const char *request, const char *hostname, int client_sock)
     // IF in cache
     // THEN return cached stuff
     // ELSE get it from the real host
-    /*
+    
+    auto start = chrono::high_resolution_clock::now();
+
+    bool get_req = (request[0] =='G'); 
+
     if (valid_cache(hostname))
     {
         string cache_ret = get_from_cache(hostname);
-        const char *data = cache_ret.c_str();
-        send_large_data(client_sock, data);
-    }*/
-    if (make_http_request(request, hostname, client_sock) != 0)
+        if (cache_ret != "")
+        {
+            cout << "Returning cache result!\n";
+            const char *data = cache_ret.c_str();
+            send_large_data(client_sock, data);
+        }
+        else if (make_http_request(request, hostname, client_sock) != 0)
+        {
+            return -1;
+        }
+    }
+    else if (make_http_request(request, hostname, client_sock) != 0)
     {
         return -1;
     }
+
+    auto finish = chrono::high_resolution_clock::now();
+    auto microseconds = chrono::duration_cast<chrono::microseconds>(finish-start);
+    cout << "TIME TAKEN: " << microseconds.count() << "µs\n";
 
     return 0;
 }

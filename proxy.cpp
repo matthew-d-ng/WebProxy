@@ -98,7 +98,7 @@ void print_blacklist()
         cout << "  " << url << "\n";
 }
 
-void req_handler(int sock)
+string receive_req(int sock)
 {
     char *client_buf = new char[BUF_SIZE];
     string request = "";
@@ -126,6 +126,14 @@ void req_handler(int sock)
         received += read_size;
     }
 
+    delete[] client_buf;
+    return request;
+}
+
+void req_handler(int sock)
+{
+    string request = receive_req(sock);
+
     bool connect_req = (request.compare(0, 7, "CONNECT") == 0);
 
     string hostname;
@@ -135,14 +143,14 @@ void req_handler(int sock)
         port = port_from_req(request);
 
     hostname = hostname_from_req(request, connect_req);
+    int header_end = request.find(HTTP_HEADER_END);
 
     //IF NOT BLOCKED get webpage ELSE return error
 
     // grab url and check against blacklist
     if (!check_item_blocked(hostname))
     {
-        cout << "REQUEST RECEIVED:\n"
-             << request;
+        cout << "REQUEST RECEIVED:\n" << request.substr(0, header_end) << "\n\n";
         if (connect_req)
         {
             http_tunnel(hostname.c_str(), sock, port.c_str());
@@ -159,7 +167,7 @@ void req_handler(int sock)
     }
 
     // cout << "bye bye" << endl;
-    delete[] client_buf;
+
     close(sock);
 }
 
